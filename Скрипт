@@ -1,0 +1,265 @@
+local players = game:GetService("Players")
+local userInputService = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local localPlayer = players.LocalPlayer
+local camera = game:GetService("Workspace").CurrentCamera
+
+-- Переменные для управления
+local aimEnabled, espEnabled, aimToggle, tpEnabled, hitboxEnlargerEnabled, menuOpen, aimCircleVisible = false, false, false, false, false, true, true
+local trackedPlayer = nil
+local aimRadius = 300
+local aimKey = Enum.KeyCode.Z
+local ctrlPressed = false
+
+-- Создание круга для отображения радиуса аимбота
+local aimCircle = Drawing.new("Circle")
+aimCircle.Color = Color3.new(1, 1, 0) -- Жёлтый цвет
+aimCircle.Thickness = 2
+aimCircle.NumSides = 64
+aimCircle.Filled = false
+aimCircle.Transparency = 1
+aimCircle.Visible = true
+
+-- Функция для нахождения ближайшего игрока в радиусе
+local function getClosestPlayerInRadius()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("Head") then
+            local head = player.Character.Head
+            local screenPoint, onScreen = camera:WorldToScreenPoint(head.Position)
+            local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)).Magnitude
+            if onScreen and distance < shortestDistance and distance <= aimRadius then
+                closestPlayer = player
+                shortestDistance = distance
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- Функция для прицеливания на голову
+local function aimAtHead(target)
+    if target and target.Character and target.Character:FindFirstChild("Head") then
+        local head = target.Character.Head
+        camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
+    end
+end
+
+-- Обновление круга аимбота
+local function updateAimCircle()
+    local mouseLocation = userInputService:GetMouseLocation()
+    aimCircle.Position = mouseLocation
+    aimCircle.Radius = aimRadius
+    aimCircle.Visible = aimCircleVisible
+end
+
+-- Создание GUI меню
+local screenGui = Instance.new("ScreenGui", game.CoreGui)
+screenGui.Name = "AimbotESPMenu"
+
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 200, 0, 360)
+mainFrame.Position = UDim2.new(0.5, -100, 0.4, -100)
+mainFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mainFrame.Visible = true
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+-- Заголовок
+local titleLabel = Instance.new("TextLabel", mainFrame)
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.Text = "Script by ASCARR"
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.SourceSans
+titleLabel.TextSize = 18
+
+-- Кнопка переключения Aimbot
+local aimButton = Instance.new("TextButton", mainFrame)
+aimButton.Size = UDim2.new(1, -20, 0, 30)
+aimButton.Position = UDim2.new(0, 10, 0, 40)
+aimButton.Text = "Toggle Aimbot (OFF)"
+aimButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+-- Кнопка переключения ESP
+local espButton = Instance.new("TextButton", mainFrame)
+espButton.Size = UDim2.new(1, -20, 0, 30)
+espButton.Position = UDim2.new(0, 10, 0, 80)
+espButton.Text = "Toggle ESP (OFF)"
+espButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+-- Кнопка изменения хитбоксов
+local hitboxButton = Instance.new("TextButton", mainFrame)
+hitboxButton.Size = UDim2.new(1, -20, 0, 30)
+hitboxButton.Position = UDim2.new(0, 10, 0, 120)
+hitboxButton.Text = "Toggle Hitbox Enlarger (OFF)"
+hitboxButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+-- Кнопка изменения радиуса
+local radiusSliderLabel = Instance.new("TextLabel", mainFrame)
+radiusSliderLabel.Size = UDim2.new(1, -20, 0, 20)
+radiusSliderLabel.Position = UDim2.new(0, 10, 0, 160)
+radiusSliderLabel.Text = "Aimbot Radius: " .. aimRadius
+radiusSliderLabel.BackgroundTransparency = 1
+radiusSliderLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+radiusSliderLabel.Font = Enum.Font.SourceSans
+radiusSliderLabel.TextSize = 14
+
+local increaseRadiusButton = Instance.new("TextButton", mainFrame)
+increaseRadiusButton.Size = UDim2.new(0.5, -10, 0, 30)
+increaseRadiusButton.Position = UDim2.new(0, 10, 0, 190)
+increaseRadiusButton.Text = "+"
+increaseRadiusButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+local decreaseRadiusButton = Instance.new("TextButton", mainFrame)
+decreaseRadiusButton.Size = UDim2.new(0.5, -10, 0, 30)
+decreaseRadiusButton.Position = UDim2.new(0.5, 0, 0, 190)
+decreaseRadiusButton.Text = "-"
+decreaseRadiusButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+-- Кнопка скрытия круга
+local circleToggleButton = Instance.new("TextButton", mainFrame)
+circleToggleButton.Size = UDim2.new(1, -20, 0, 30)
+circleToggleButton.Position = UDim2.new(0, 10, 0, 230)
+circleToggleButton.Text = "Toggle Aim Circle (ON)"
+circleToggleButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+-- Кнопка уничтожения меню
+local destroyButton = Instance.new("TextButton", mainFrame)
+destroyButton.Size = UDim2.new(1, -20, 0, 30)
+destroyButton.Position = UDim2.new(0, 10, 0, 270)
+destroyButton.Text = "Destroy Menu"
+destroyButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+-- Нижняя надпись
+local footerLabel = Instance.new("TextLabel", mainFrame)
+footerLabel.Size = UDim2.new(1, 0, 0, 30)
+footerLabel.Position = UDim2.new(0, 0, 1, -30)
+footerLabel.Text = "Сделано командой ASCARR"
+footerLabel.BackgroundTransparency = 1
+footerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+footerLabel.Font = Enum.Font.SourceSansItalic
+footerLabel.TextSize = 14
+
+-- Обработка событий
+aimButton.MouseButton1Click:Connect(function()
+    aimToggle = not aimToggle
+    aimButton.Text = "Toggle Aimbot (" .. (aimToggle and "ON" or "OFF") .. ")"
+end)
+
+espButton.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espButton.Text = "Toggle ESP (" .. (espEnabled and "ON" or "OFF") .. ")"
+end)
+
+hitboxButton.MouseButton1Click:Connect(function()
+    hitboxEnlargerEnabled = not hitboxEnlargerEnabled
+    hitboxButton.Text = "Toggle Hitbox Enlarger (" .. (hitboxEnlargerEnabled and "ON" or "OFF") .. ")"
+end)
+
+increaseRadiusButton.MouseButton1Click:Connect(function()
+    aimRadius = aimRadius + 50
+    radiusSliderLabel.Text = "Aimbot Radius: " .. aimRadius
+end)
+
+decreaseRadiusButton.MouseButton1Click:Connect(function()
+    if aimRadius > 50 then
+        aimRadius = aimRadius - 50
+        radiusSliderLabel.Text = "Aimbot Radius: " .. aimRadius
+    end
+end)
+
+circleToggleButton.MouseButton1Click:Connect(function()
+    aimCircleVisible = not aimCircleVisible
+    circleToggleButton.Text = "Toggle Aim Circle (" .. (aimCircleVisible and "ON" or "OFF") .. ")"
+end)
+
+destroyButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+    menuOpen = false
+end)
+
+-- Управление Aimbot через клавишу
+userInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == aimKey and aimToggle then
+        if trackedPlayer then
+            trackedPlayer = nil
+            aimEnabled = false
+        else
+            trackedPlayer = getClosestPlayerInRadius()
+            aimEnabled = trackedPlayer ~= nil
+        end
+    elseif input.KeyCode == Enum.KeyCode.Insert then
+        -- Показ или скрытие меню
+        menuOpen = not menuOpen
+        mainFrame.Visible = menuOpen
+    end
+end)
+
+-- Обновление хитбоксов и ESP
+local function updateESP()
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            if head then
+                -- Увеличение хитбоксов
+                if hitboxEnlargerEnabled then
+                    head.Size = Vector3.new(5, 5, 5)
+                    head.Transparency = 0.5
+                else
+                    head.Size = Vector3.new(1, 1, 1)
+                    head.Transparency = 0
+                end
+
+                -- Отображение ESP
+                if espEnabled then
+                    if not head:FindFirstChild("ESPBox") then
+                        local espBox = Instance.new("BoxHandleAdornment")
+                        espBox.Name = "ESPBox"
+                        espBox.Size = head.Size
+                        espBox.Adornee = head
+                        espBox.AlwaysOnTop = true
+                        espBox.ZIndex = 10
+                        espBox.Color3 = Color3.new(1, 0, 0)
+                        espBox.Transparency = 0.5
+                        espBox.Parent = head
+
+                        local nameTag = Instance.new("BillboardGui")
+                        nameTag.Name = "NameTag"
+                        nameTag.Adornee = head
+                        nameTag.Size = UDim2.new(0, 200, 0, 50)
+                        nameTag.StudsOffset = Vector3.new(0, 2, 0)
+                        nameTag.AlwaysOnTop = true
+
+                        local nameLabel = Instance.new("TextLabel")
+                        nameLabel.Text = player.Name
+                        nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                        nameLabel.BackgroundTransparency = 1
+                        nameLabel.TextColor3 = Color3.new(1, 1, 1)
+                        nameLabel.TextSize = 14
+                        nameLabel.Parent = nameTag
+
+                        nameTag.Parent = head
+                    end
+                else
+                    if head:FindFirstChild("ESPBox") then
+                        head:FindFirstChild("ESPBox"):Destroy()
+                    end
+                    if head:FindFirstChild("NameTag") then
+                        head:FindFirstChild("NameTag"):Destroy()
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Постоянное обновление
+runService.RenderStepped:Connect(function()
+    if aimEnabled and trackedPlayer and trackedPlayer.Character then
+        aimAtHead(trackedPlayer)
+    end
+    updateAimCircle()
+    updateESP()
+end)
